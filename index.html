@@ -1556,6 +1556,12 @@
             'SGD': 'S$'
         };
 
+        // Build stamp — printed in PDF footers and logged on load, so any
+        // generated file (or bug report) can be traced to the exact build.
+        // Bump this string whenever a PDF-affecting fix is deployed.
+        const _APP_BUILD = 'v1.1-attendance-cols';
+        console.log('%c[IMSE Easy BMS] build ' + _APP_BUILD, 'color:#1d4ed8;font-weight:bold');
+
         let tokenClient;
         let accessToken = null;
         let currentUser  = null; // { email, name, picture } — set after Google sign-in
@@ -19773,7 +19779,7 @@ ${'─'.repeat(50)}
                 doc.text('Management Approval', PW-MR-60, sigY+5);
 
                 doc.setFontSize(7); doc.setFont('helvetica','italic'); doc.setTextColor(150,150,150);
-                doc.text((settings.companyName||'IMSE Tech Services Pvt Ltd')+' — Daily Attendance — '+dateFilter+' — Generated '+new Date().toLocaleDateString('en-IN'), PW/2, 291, {align:'center'});
+                doc.text((settings.companyName||'IMSE Tech Services Pvt Ltd')+' — Daily Attendance — '+dateFilter+' — Generated '+new Date().toLocaleDateString('en-IN')+'  ·  build:'+_APP_BUILD, PW/2, 291, {align:'center'});
                 doc.save('DailyAttendance_'+dateFilter+'.pdf');
                 return;
             }
