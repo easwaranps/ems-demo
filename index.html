@@ -94,8 +94,8 @@
         (function(){const w=console.warn;console.warn=function(){if(arguments[0]&&String(arguments[0]).includes('cdn.tailwindcss.com'))return;w.apply(console,arguments);};})();
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- DEMO: Google sign-in removed -->
-    <!-- DEMO: Google API removed -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
     <!-- PDF Generation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -151,6 +151,13 @@
             color: #94A3B8;
             cursor: not-allowed;
         }
+        /* Frozen ID/Party columns in the Transactions table — keeps them
+           visible while scrolling right to reach Amount/Status/Actions on
+           wide rows. Explicit background is required for sticky cells (else
+           scrolled content shows through); this rule keeps the hover
+           highlight consistent across the frozen and scrolling columns. */
+        .txn-sticky-col { background: #fff; }
+        tr:hover .txn-sticky-col { background: #f9fafb; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 min-h-screen">
@@ -1355,7 +1362,16 @@
                             <thead class="bg-gray-50 text-xs text-gray-600 uppercase">
                                 <tr>
                                     <th class="px-3 py-2 text-left">Date</th>
-                                    <th class="px-3 py-2 text-right">Amount (INR)</th>
+                                    <th class="px-3 py-2 text-right">Amount Received (INR)</th>
+                                    <th class="px-3 py-2 text-right">Taxable Amount</th>
+                                    <th class="px-3 py-2 text-right">TDS %</th>
+                                    <th class="px-3 py-2 text-right">TDS Amount</th>
+                                    <th class="px-3 py-2 text-right">IT TDS %</th>
+                                    <th class="px-3 py-2 text-right">IT TDS Amount</th>
+                                    <th class="px-3 py-2 text-right">GST TDS %</th>
+                                    <th class="px-3 py-2 text-right">GST TDS Amount</th>
+                                    <th class="px-3 py-2 text-right">Amount Receivable</th>
+                                    <th class="px-3 py-2 text-right">Difference</th>
                                     <th class="px-3 py-2 text-left">Mode</th>
                                     <th class="px-3 py-2 text-left">Ref / TXN No.</th>
                                     <th class="px-3 py-2 text-left">Remarks</th>
@@ -9135,6 +9151,16 @@
             const showDocs  = (t.txnCategory === 'INVOICE' || t.txnCategory === 'PO') &&
                               ['Approved','Sent','Completed','Paid'].includes(t.status);
             const tJson = JSON.stringify(t).replace(/'/g,"&apos;");
+            // Amount cell — shown for Quotation, PO, Credit Note, and Invoice
+            // (the priced document types). Enquiry and Delivery Note carry no
+            // price by design and are left as-is.
+            let amountCell = '';
+            const AMOUNT_CATS = ['QUOTATION','PO','CREDIT_NOTE','INVOICE'];
+            if (AMOUNT_CATS.includes(t.txnCategory)) {
+                const amt = calculateTotals(t.items || []).total;
+                const fmtAmt = n => '₹' + (typeof formatNumber === 'function' ? formatNumber(n) : Number(n).toFixed(2));
+                amountCell = `<td class="px-3 py-2 text-right whitespace-nowrap font-medium">${fmtAmt(amt)}</td>`;
+            }
             // Balance-due cell — INVOICE category only. Reads payment history
             // and compares with computed line-item grand total. Colour-coded:
             //   green = fully paid, red = balance pending, amber = no payments yet, grey = none recorded.
@@ -9159,13 +9185,14 @@
                 balanceCell = `<td class="px-3 py-2 text-right whitespace-nowrap">${chip}</td>`;
             }
             return `<tr class="border-b hover:bg-gray-50 text-sm">
-                <td class="px-3 py-2 font-medium text-indigo-700 whitespace-nowrap">${t.txnID}${(t.revisionNo||0)>0 ? ` <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold align-middle" title="Revised ${t.revisionDate||''} — ${(t.revisionReason||'').replace(/"/g,'&quot;')}">Rev-${t.revisionNo}</span>` : ''}</td>
-                <td class="px-3 py-2 max-w-xs">
+                <td class="txn-sticky-col px-3 py-2 font-medium text-indigo-700" style="position:sticky;left:0;z-index:5;width:110px;min-width:110px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:2px 0 4px -2px rgba(0,0,0,0.15)" title="${t.txnID}">${t.txnID}${(t.revisionNo||0)>0 ? ` <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold align-middle" title="Revised ${t.revisionDate||''} — ${(t.revisionReason||'').replace(/"/g,'&quot;')}">Rev-${t.revisionNo}</span>` : ''}</td>
+                <td class="txn-sticky-col px-3 py-2" style="position:sticky;left:110px;z-index:5;width:170px;min-width:170px;max-width:170px;box-shadow:2px 0 4px -2px rgba(0,0,0,0.15)">
                     <div class="truncate" title="${t.partyName}">${t.partyName}</div>
                     ${(t.txnCategory==='INVOICE'||t.txnCategory==='PO') ? _ledgerBadge(t.ledgerAccountId) : ''}
                 </td>
                 <td class="px-3 py-2 text-gray-500 whitespace-nowrap">${t.txnDate}</td>
-                <td class="px-3 py-2 text-gray-500">${t.reference || '—'}</td>
+                <td class="px-3 py-2 text-gray-500 max-w-xs truncate" title="${(t.subject||'').replace(/"/g,'&quot;')}">${t.subject || '—'}</td>
+                ${amountCell}
                 <td class="px-3 py-2">${statusBadge(t.status)}${(() => {
                     if (t.txnCategory !== 'ENQUIRY' || !(t.enquiryRecipients||[]).length) return '';
                     const recs = t.enquiryRecipients;
@@ -9264,13 +9291,16 @@
                     <!-- Existing payments -->
                     <div id="invPayList">
                         ${payments.map((p,pi)=>`
-                        <div class="border border-gray-200 rounded-xl p-3 flex justify-between items-start">
+                        <div class="border border-gray-200 rounded-xl p-3 flex justify-between items-start" id="invPayRow_${pi}">
                             <div class="text-sm">
                                 <div class="font-semibold">${fmt(p.amount)} · ${p.date||'No date'}</div>
                                 <div class="text-xs text-gray-500">${p.mode||'—'} ${p.refNo?'· Ref: '+p.refNo:''}</div>
                                 <div class="text-xs text-gray-400">${p.remarks||''}</div>
                             </div>
-                            <button onclick="_deleteInvPayment('${txnID}',${pi})" class="text-red-400 hover:text-red-600 text-xs ml-2">✕</button>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button onclick="_openEditInvPayment('${txnID}',${pi})" class="text-indigo-500 hover:text-indigo-700 text-xs font-medium">Edit</button>
+                                <button onclick="_deleteInvPayment('${txnID}',${pi})" class="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            </div>
                         </div>`).join('')}
                     </div>
 
@@ -9314,6 +9344,67 @@
                 </div>
             </div>`;
             document.body.appendChild(modal);
+        }
+
+        // Turn one existing payment row into an inline edit form (in place,
+        // no need to delete-and-recreate). Cancel restores the plain view.
+        function _openEditInvPayment(txnID, idx) {
+            const txn = (transactions||[]).find(t => t.txnID === txnID);
+            const p = txn?.paymentsReceived?.[idx];
+            const row = document.getElementById(`invPayRow_${idx}`);
+            if (!p || !row) return;
+            const modes = ['Bank Transfer (NEFT/RTGS/IMPS)','Cheque','Cash','UPI','Other'];
+            row.innerHTML = `
+                <div class="w-full">
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div><label class="block text-[10px] font-semibold text-gray-500 mb-0.5">Date</label>
+                            <input type="date" id="editPayDate_${idx}" value="${p.date||''}" class="w-full px-2 py-1 border rounded text-xs"/></div>
+                        <div><label class="block text-[10px] font-semibold text-gray-500 mb-0.5">Amount (₹)</label>
+                            <input type="number" step="0.01" id="editPayAmt_${idx}" value="${p.amount||0}" class="w-full px-2 py-1 border rounded text-xs"/></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div><label class="block text-[10px] font-semibold text-gray-500 mb-0.5">Mode</label>
+                            <select id="editPayMode_${idx}" class="w-full px-2 py-1 border rounded text-xs">
+                                ${modes.map(m=>`<option value="${m}" ${p.mode===m?'selected':''}>${m}</option>`).join('')}
+                            </select></div>
+                        <div><label class="block text-[10px] font-semibold text-gray-500 mb-0.5">Ref / UTR No.</label>
+                            <input type="text" id="editPayRef_${idx}" value="${(p.refNo||'').replace(/"/g,'&quot;')}" class="w-full px-2 py-1 border rounded text-xs"/></div>
+                    </div>
+                    <div class="mb-2"><label class="block text-[10px] font-semibold text-gray-500 mb-0.5">Remarks</label>
+                        <input type="text" id="editPayRemark_${idx}" value="${(p.remarks||'').replace(/"/g,'&quot;')}" class="w-full px-2 py-1 border rounded text-xs"/></div>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="renderInvPaymentsList('${txnID}')" class="px-3 py-1 border rounded text-xs">Cancel</button>
+                        <button onclick="_saveEditInvPayment('${txnID}',${idx})" class="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-semibold">Save</button>
+                    </div>
+                </div>`;
+        }
+
+        async function _saveEditInvPayment(txnID, idx) {
+            const txn = (transactions||[]).find(t => t.txnID === txnID);
+            if (!txn?.paymentsReceived?.[idx]) return;
+            const date   = document.getElementById(`editPayDate_${idx}`)?.value;
+            const amount = parseFloat(document.getElementById(`editPayAmt_${idx}`)?.value) || 0;
+            if (!date || !amount) { alert('Please enter payment date and amount.'); return; }
+            txn.paymentsReceived[idx] = {
+                ...txn.paymentsReceived[idx],   // preserve any TDS/taxable fields already on this record
+                date, amount,
+                mode:    document.getElementById(`editPayMode_${idx}`)?.value || '',
+                refNo:   (document.getElementById(`editPayRef_${idx}`)?.value || '').trim(),
+                remarks: (document.getElementById(`editPayRemark_${idx}`)?.value || '').trim()
+            };
+            try {
+                await saveData('transactions', transactions);
+                document.getElementById('invPayModal')?.remove();
+                renderView();
+                _showToast('✓ Payment updated for '+txnID, '#15803d', 3000);
+            } catch (err) { alert('Save failed: ' + err.message); }
+        }
+
+        // Re-render just the payment list portion (used by Cancel, to restore
+        // the plain view without closing/reopening the whole modal).
+        function renderInvPaymentsList(txnID) {
+            document.getElementById('invPayModal')?.remove();
+            openInvoicePaymentsModal(txnID);
         }
 
         async function _addInvPayment(txnID) {
@@ -9396,6 +9487,7 @@
                 // Only the Invoice group gets a Balance Due column — that's where
                 // payment tracking happens. Other categories use the standard layout.
                 const isInvoiceGroup = g.cat === 'INVOICE';
+                const showAmountCol = ['QUOTATION','PO','CREDIT_NOTE','INVOICE'].includes(g.cat);
                 return `
                 <div class="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
                     <div class="${g.color} px-4 py-2 flex justify-between items-center">
@@ -9406,10 +9498,11 @@
                         <table class="w-full">
                             <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
                                 <tr>
-                                    <th class="px-3 py-2 text-left">ID</th>
-                                    <th class="px-3 py-2 text-left">Party</th>
+                                    <th class="px-3 py-2 text-left" style="position:sticky;left:0;z-index:11;background:#f9fafb;width:110px;min-width:110px;max-width:110px;box-shadow:2px 0 4px -2px rgba(0,0,0,0.15)">ID</th>
+                                    <th class="px-3 py-2 text-left" style="position:sticky;left:110px;z-index:11;background:#f9fafb;width:170px;min-width:170px;max-width:170px;box-shadow:2px 0 4px -2px rgba(0,0,0,0.15)">Party</th>
                                     <th class="px-3 py-2 text-left">Date</th>
-                                    <th class="px-3 py-2 text-left">Reference</th>
+                                    <th class="px-3 py-2 text-left">Subject</th>
+                                    ${showAmountCol ? '<th class="px-3 py-2 text-right">Amount</th>' : ''}
                                     <th class="px-3 py-2 text-left">Status</th>
                                     ${isInvoiceGroup ? '<th class="px-3 py-2 text-right">Balance Due</th>' : ''}
                                     <th class="px-3 py-2 text-right">Actions</th>
@@ -16598,7 +16691,14 @@
             // Reset and (if INVOICE) load saved payments
             clearInvoicePaymentRows();
             if (txn && Array.isArray(txn.paymentsReceived)) {
-                txn.paymentsReceived.forEach(p => addInvoicePaymentRow(p));
+                // Wrapped defensively: a problem restoring one payment row must
+                // NEVER prevent the rest of this function (bank account, ledger
+                // account, and line-item GST mode below) from populating.
+                try {
+                    txn.paymentsReceived.forEach(p => addInvoicePaymentRow(p));
+                } catch (e) {
+                    console.error('Error restoring payment rows:', e);
+                }
             }
             toggleTxnPaymentsSection();   // show/hide based on category
             recomputeInvoicePaymentBalance();
@@ -17244,6 +17344,43 @@
             if (empty) empty.classList.toggle('hidden', rows.length > 0);
         }
 
+        // Recompute a single payment row's TDS amounts (auto-fill from % ×
+        // taxable, but user-editable/overridable) and the two derived fields:
+        //   Amount Receivable = Invoice Grand Total − TDS − IT TDS − GST TDS
+        //   Difference        = Amount Receivable − Amount Received (this row)
+        function recomputeRowTDS(tr, autoFillAmounts = true) {
+            if (!tr) return;
+            try {
+                const num = sel => parseFloat(tr.querySelector(sel)?.value) || 0;
+                const taxable = num('.pay-taxable');
+                if (autoFillAmounts) {
+                    const tdsAmtEl = tr.querySelector('.pay-tds-amt');
+                    const itAmtEl  = tr.querySelector('.pay-ittds-amt');
+                    const gstAmtEl = tr.querySelector('.pay-gsttds-amt');
+                    if (tdsAmtEl) tdsAmtEl.value = taxable ? (+(taxable * num('.pay-tds-pct') / 100).toFixed(2) || '') : tdsAmtEl.value;
+                    if (itAmtEl)  itAmtEl.value  = taxable ? (+(taxable * num('.pay-ittds-pct') / 100).toFixed(2) || '') : itAmtEl.value;
+                    if (gstAmtEl) gstAmtEl.value = taxable ? (+(taxable * num('.pay-gsttds-pct') / 100).toFixed(2) || '') : gstAmtEl.value;
+                }
+                const totalEl = document.getElementById('totalAmount');
+                const grandTotal = parseFloat((totalEl?.textContent || '').replace(/[^0-9.\-]/g, '')) || 0;
+                const tdsAmt = num('.pay-tds-amt'), itAmt = num('.pay-ittds-amt'), gstAmt = num('.pay-gsttds-amt');
+                const receivable = +(grandTotal - tdsAmt - itAmt - gstAmt).toFixed(2);
+                const received = num('.pay-amt');
+                const diff = +(receivable - received).toFixed(2);
+                const fmt = n => '₹' + (typeof formatNumber === 'function' ? formatNumber(n) : Number(n).toFixed(2));
+                const recvEl = tr.querySelector('.pay-receivable');
+                const diffEl = tr.querySelector('.pay-diff');
+                if (recvEl) recvEl.textContent = fmt(receivable);
+                if (diffEl) {
+                    diffEl.textContent = fmt(diff);
+                    diffEl.className = 'pay-diff px-2 py-1 text-right font-medium ' +
+                        (Math.abs(diff) < 0.5 ? 'text-green-600' : diff > 0 ? 'text-amber-600' : 'text-red-600');
+                }
+            } catch (e) {
+                console.error('recomputeRowTDS failed for one row (non-fatal):', e);
+            }
+        }
+
         // Append a new payment row. Optional `p` arg pre-fills from a saved entry.
         function addInvoicePaymentRow(p = null) {
             const body = document.getElementById('txnPaymentsBody');
@@ -17255,7 +17392,16 @@
             const modes = ['Cash','G-Pay / UPI','Bank Transfer (NEFT/RTGS/IMPS)','Cheque','Credit Card','Debit Card'];
             tr.innerHTML = `
                 <td class="px-3 py-2"><input type="date" class="pay-date w-full px-2 py-1 border rounded text-sm" value="${p?.date || today}" max="${today}"/></td>
-                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-amt w-full px-2 py-1 border rounded text-sm text-right" value="${p?.amount ?? ''}" placeholder="0.00" oninput="recomputeInvoicePaymentBalance()"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-amt w-24 px-2 py-1 border rounded text-sm text-right" value="${p?.amount ?? ''}" placeholder="0.00" oninput="recomputeInvoicePaymentBalance(); recomputeRowTDS(this.closest('tr'), false);"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-taxable w-24 px-2 py-1 border rounded text-sm text-right" value="${p?.taxableAmount ?? ''}" placeholder="0.00" oninput="recomputeRowTDS(this.closest('tr'))"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-tds-pct w-16 px-2 py-1 border rounded text-sm text-right" value="${p?.tdsPct ?? ''}" placeholder="%" oninput="recomputeRowTDS(this.closest('tr'))"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-tds-amt w-24 px-2 py-1 border rounded text-sm text-right" value="${p?.tdsAmount ?? ''}" placeholder="0.00" oninput="recomputeRowTDS(this.closest('tr'), false)"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-ittds-pct w-16 px-2 py-1 border rounded text-sm text-right" value="${p?.itTdsPct ?? ''}" placeholder="%" oninput="recomputeRowTDS(this.closest('tr'))"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-ittds-amt w-24 px-2 py-1 border rounded text-sm text-right" value="${p?.itTdsAmount ?? ''}" placeholder="0.00" oninput="recomputeRowTDS(this.closest('tr'), false)"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-gsttds-pct w-16 px-2 py-1 border rounded text-sm text-right" value="${p?.gstTdsPct ?? ''}" placeholder="%" oninput="recomputeRowTDS(this.closest('tr'))"/></td>
+                <td class="px-3 py-2"><input type="number" min="0" step="0.01" class="pay-gsttds-amt w-24 px-2 py-1 border rounded text-sm text-right" value="${p?.gstTdsAmount ?? ''}" placeholder="0.00" oninput="recomputeRowTDS(this.closest('tr'), false)"/></td>
+                <td class="px-3 py-2 text-right whitespace-nowrap"><span class="pay-receivable font-medium">₹0.00</span></td>
+                <td class="px-3 py-2 text-right whitespace-nowrap"><span class="pay-diff font-medium">₹0.00</span></td>
                 <td class="px-3 py-2">
                     <select class="pay-mode w-full px-2 py-1 border rounded text-sm">
                         <option value="">-- Select --</option>
@@ -17268,6 +17414,7 @@
             `;
             body.appendChild(tr);
             recomputeInvoicePaymentBalance();
+            recomputeRowTDS(tr, false);   // paint computed cells from any pre-filled saved values, without overwriting saved TDS amounts
         }
 
         // Clear all payment rows (called when modal opens fresh / on category change).
@@ -17371,6 +17518,13 @@
                     paymentsReceived: Array.from(document.querySelectorAll('#txnPaymentsBody tr')).map(tr => ({
                         date:    tr.querySelector('.pay-date')?.value || '',
                         amount:  parseFloat(tr.querySelector('.pay-amt')?.value) || 0,
+                        taxableAmount: parseFloat(tr.querySelector('.pay-taxable')?.value) || 0,
+                        tdsPct:        parseFloat(tr.querySelector('.pay-tds-pct')?.value) || 0,
+                        tdsAmount:     parseFloat(tr.querySelector('.pay-tds-amt')?.value) || 0,
+                        itTdsPct:      parseFloat(tr.querySelector('.pay-ittds-pct')?.value) || 0,
+                        itTdsAmount:   parseFloat(tr.querySelector('.pay-ittds-amt')?.value) || 0,
+                        gstTdsPct:     parseFloat(tr.querySelector('.pay-gsttds-pct')?.value) || 0,
+                        gstTdsAmount:  parseFloat(tr.querySelector('.pay-gsttds-amt')?.value) || 0,
                         mode:    tr.querySelector('.pay-mode')?.value || '',
                         refNo:   (tr.querySelector('.pay-ref')?.value || '').trim(),
                         remarks: (tr.querySelector('.pay-remarks')?.value || '').trim()
@@ -36970,151 +37124,5 @@ Automated WFH alert — ${company} Attendance System.`;
             </div>
         </div>
     </div>
-
-<script>
-/* ═══════════════════ DEMO MODE — fictitious data, nothing persists ═══════════════════ */
-(function(){
-    const today = new Date();
-    const d = (o) => { const x = new Date(today); x.setDate(x.getDate()+o); return x.toISOString().split('T')[0]; };
-
-    settings = {
-        companyName: 'Demo Engineering Service company',
-        companyAddress: '12, Marine Industrial Estate, Ennore, Chennai - 600057',
-        gstNumber: '33DEMO1234E1Z5', tanNumber: 'CHED04321E', panNumber: 'DEMOP1234E',
-        cinNumber: 'U74999TN2020PTC000000', msmeNumber: 'UDYAM-TN-02-0000000',
-        phone: '+91 90000 00000', email: 'demo@example.com',
-        prSeqFloor_2627: 2, enqSeqFloor_2627: 12
-    };
-
-    parties = [
-        {partyID:'P001', partyName:'Coastal Shipping Lines Ltd',     partyType:'Client',        address:'Harbour Road, Chennai Port, Chennai - 600001', gstNumber:'33AAACC1111C1Z1', email:'ops@coastalship.demo', phone:'+91 91111 11111'},
-        {partyID:'P002', partyName:'Bluewave Dredging Pvt Ltd',      partyType:'Client',        address:'Dock No.4, Ennore Port, Chennai - 600057',      gstNumber:'33AAABB2222B2Z2', email:'tech@bluewave.demo'},
-        {partyID:'P003', partyName:'Sunrise Apartments Owners Assn', partyType:'Client',        address:'OMR, Perungudi, Chennai - 600096'},
-        {partyID:'P004', partyName:'Golden Anchor Marine Services',  partyType:'Client',        address:'Royapuram, Chennai - 600013', gstNumber:'33AAADD3333D3Z3'},
-        {partyID:'P005', partyName:'Precision Engine Spares Co',     partyType:'SubContractor', address:'Parrys, Chennai - 600001', gstNumber:'33AAAEE4444E4Z4', email:'sales@precisionspares.demo'},
-        {partyID:'P006', partyName:'Chennai Bearing House',          partyType:'SubContractor', address:'Mount Road, Chennai - 600002'},
-        {partyID:'P007', partyName:'Marine Gasket & Seals Traders',  partyType:'SubContractor', address:'Mannady, Chennai - 600001'}
-    ];
-
-    // ── Chart of Accounts (Ledger Account tagging demo — Invoice/PO only) ──
-    chartOfAccounts = [
-        { id:'COA-1000', code:'1000', name:'Cash in Hand',        type:'Asset',     active:true },
-        { id:'COA-1100', code:'1100', name:'Bank Accounts',       type:'Asset',     active:true },
-        { id:'COA-1200', code:'1200', name:'Sundry Debtors (AR)', type:'Asset',     active:true },
-        { id:'COA-2000', code:'2000', name:'Sundry Creditors (AP)', type:'Liability', active:true },
-        { id:'COA-2100', code:'2100', name:'GST Payable',         type:'Liability', active:true },
-        { id:'COA-4000', code:'4000', name:'Service Income',      type:'Income',    active:true },
-        { id:'COA-5100', code:'5100', name:'Food Expenses',       type:'Expense',   active:true },
-        { id:'COA-5200', code:'5200', name:'Travelling Expenses', type:'Expense',   active:true },
-        { id:'COA-5400', code:'5400', name:'Office Rent',         type:'Expense',   active:true },
-        { id:'COA-5600', code:'5600', name:'Consumables',         type:'Expense',   active:true },
-    ];
-
-    // ── Bank Accounts (single account per currency — type "Both" so it shows
-    //    in every dropdown; demonstrates the fix behind the Merge tool without
-    //    needing to show a duplicate pair) ──
-    bankAccounts = [
-        { id:'BA001', accountName:'HDFC Bank INR Account', bankName:'HDFC Bank', currency:'INR', type:'Both', accountNo:'50200001228761', isActive:true },
-        { id:'BA002', accountName:'HDFC Bank USD Account',  bankName:'HDFC Bank', currency:'USD', type:'Both', accountNo:'50200085056797', isActive:true },
-        { id:'BA003', accountName:'SBI Bank INR Account',   bankName:'SBI Bank',  currency:'INR', type:'Both', accountNo:'00000034519379349', isActive:true },
-    ];
-
-    const items1 = [{partNo:'', description:'Main engine top overhaul - 6 cylinder units, incl. valve grinding and clearance setting', qty:1, uom:'Job', rate:185000, gstPct:18}];
-    const items2 = [{partNo:'', description:'DG set 500 kVA - B-check service', qty:2, uom:'Nos', rate:22500, gstPct:18},
-                    {partNo:'', description:'Fuel injector overhaul & calibration', qty:6, uom:'Nos', rate:3800, gstPct:18}];
-    const items3 = [{partNo:'CB-6205', description:'Deep groove ball bearing 6205-2RS', qty:8, uom:'Nos', rate:0, gstPct:0},
-                    {partNo:'GSK-114', description:'Cylinder head gasket - 120 mm bore', qty:6, uom:'Nos', rate:0, gstPct:0}];
-    transactions = [
-        {txnID:'QTE2627001', txnCategory:'QUOTATION', txnDirection:'Outgoing', partyName:'Coastal Shipping Lines Ltd', txnDate:d(-40), status:'Completed', reference:'Ref Email Dated '+d(-45), clientPIC:'Capt. Raman', clientEmail:'raman@coastalship.demo', terms:'Validity 30 days. Payment 50% advance, balance on completion.', items:items1, totalAmount:218300, currency:'INR'},
-        {txnID:'QTE2627002', txnCategory:'QUOTATION', txnDirection:'Outgoing', partyName:'Bluewave Dredging Pvt Ltd',  txnDate:d(-18), status:'Sent', reference:'Sub: Dredger AUX engine service', clientPIC:'Mr. Selvam', items:items2, totalAmount:80004, currency:'INR'},
-        {txnID:'INV2627001', txnCategory:'INVOICE', txnDirection:'Outgoing', partyName:'Coastal Shipping Lines Ltd', txnDate:d(-25), dueDate:d(5), status:'Sent', reference:'Against QTE2627001', items:items1, totalAmount:218300, currency:'INR', bankAccountId:'BA001', ledgerAccountId:'COA-4000', payments:[{amount:100000, date:d(-20)}]},
-        {txnID:'INV2627002', txnCategory:'INVOICE', txnDirection:'Outgoing', partyName:'Sunrise Apartments Owners Assn', txnDate:d(-60), dueDate:d(-30), status:'Paid', items:[{description:'DG PMS annual maintenance contract - Q1 billing', qty:1, uom:'Qtr', rate:45000, gstPct:18}], totalAmount:53100, currency:'INR', bankAccountId:'BA003', ledgerAccountId:'COA-4000', payments:[{amount:53100, date:d(-55)}]},
-        {txnID:'PO2627001',  txnCategory:'PO', txnDirection:'Outgoing', partyName:'Precision Engine Spares Co', txnDate:d(-10), status:'Sent', reference:'Against ENQ2627013', items:[{partNo:'PST-71', description:'Piston ring set - Detroit 4-71T', qty:4, uom:'Set', rate:6200, gstPct:18}], totalAmount:29264, currency:'INR', bankAccountId:'BA001', ledgerAccountId:'COA-5600'},
-        {txnID:'ENQ2627013', txnCategory:'ENQUIRY', txnDirection:'Outgoing', partyName:'Precision Engine Spares Co', txnDate:d(-14), status:'Quote Received', clientPIC:'Mr. Kumar', terms:'Quote validity minimum 15 days. Mention delivery period against each item.', items:items3, totalAmount:0, currency:'INR',
-            enquiryRecipients:[
-                {name:'Precision Engine Spares Co', contact:'sales@precisionspares.demo', sentDate:d(-14), status:'Quote Received', notes:'Best rate - PO issued'},
-                {name:'Chennai Bearing House', contact:'+91 92222 22222', sentDate:d(-14), status:'Declined', notes:'No stock of GSK-114'},
-                {name:'Marine Gasket & Seals Traders', contact:'', sentDate:d(-14), status:'No Response', notes:'Followed up on '+d(-7)}]}
-    ];
-
-    staff = [
-        {staffID:'ST001', name:'ARJUN KUMAR',  staffType:'Office', designation:'Accounts Executive',    basicSalary:12000, hraPct:30, daPct:65, gradePay:1500, conveyance:800, medical:500, esicNumber:'3400000001', uanNumber:'100000000001', active:true, doj:'2023-04-01'},
-        {staffID:'ST002', name:'PRIYA VENKAT', staffType:'Office', designation:'HR & Admin',            basicSalary:11000, hraPct:30, daPct:65, gradePay:1200, conveyance:800, medical:500, esicNumber:'3400000002', active:true, doj:'2024-01-15'},
-        {staffID:'ST003', name:'MOHAN RAJ',    staffType:'Field',  designation:'Sr. Marine Technician', basicSalary:14000, hraPct:30, daPct:65, gradePay:2000, active:true, doj:'2022-08-10'},
-        {staffID:'ST004', name:'DINESH BABU',  staffType:'Field',  designation:'Technician',            basicSalary:10500, hraPct:30, daPct:65, gradePay:1000, esicNumber:'3400000004', active:true, doj:'2024-06-01'}
-    ];
-
-    payslips = []; workLogs = [];
-    arInvoices = [{invID:'ARINV001', invoiceID:'ARINV001', partyName:'Golden Anchor Marine Services', invoiceDate:d(-90), dueDate:d(-60), amount:74000, received:50000, status:'Partially Paid'}];
-
-    fundRequests = [{reqID:'FR-2627-001', fundReqID:'FR-2627-001', requestedBy:'ST003', requestedByName:'MOHAN RAJ', amount:8000, purpose:'Advance for food & local travel - Ennore dredger job', status:'Disbursed', reqDate:d(-12), projectName:'Bluewave dredger AUX overhaul'}];
-    fundPools = [
-        {poolID:'Fund Req-2627-001', status:'Closed', disbursedAmount:5000, disbursedFromBank:'HDFC Bank INR Account', disbursedFromBankId:'BA001', requestedBy:'MOHAN RAJ', requestedByName:'MOHAN RAJ', disbursedOn:d(-30), disbursedDate:d(-30), purpose:'Adv food and local travel expenses', projectName:'Chennai camp project', closedOn:d(-2)},
-        {poolID:'Fund Req-2627-002', status:'Active', disbursedAmount:8000, disbursedFromBank:'HDFC Bank INR Account', disbursedFromBankId:'BA001', requestedBy:'MOHAN RAJ', requestedByName:'MOHAN RAJ', disbursedOn:d(-10), disbursedDate:d(-10), purpose:'Ennore dredger job advance', projectName:'Bluewave dredger AUX overhaul'}
-    ];
-
-    projectExpenses = [
-        {projExpID:'PE001', projectName:'Bluewave dredger AUX overhaul', customerName:'Bluewave Dredging Pvt Ltd', status:'Active',
-         items:[
-            {itemID:'PEI001', expenseDate:d(-9), description:'Team lunch', amount:420, paidByName:'MOHAN RAJ', technicians:['MOHAN RAJ','DINESH BABU'], head:'Food Expenses', acctHead:'AC001 - Food Expenses', poolID:'Fund Req-2627-002', billStatus:'available', vendor:'Hotel Sangeetha'},
-            {itemID:'PEI002', expenseDate:d(-8), description:'Auto to Ennore port', amount:350, paidByName:'MOHAN RAJ', technicians:['MOHAN RAJ'], head:'Travel', acctHead:'AC002 - Local Travel', poolID:'Fund Req-2627-002', billStatus:'no_bill', billRemark:'Auto - no receipt'},
-            {itemID:'PEI003', expenseDate:d(-7), description:'Consumables - emery sheets, WD40', amount:980, paidByName:'DINESH BABU', technicians:['DINESH BABU'], head:'Consumables', acctHead:'AC003 - Consumables', poolID:'Fund Req-2627-002', billStatus:'pending', billRemark:'Original with accounts'}
-         ]}
-    ];
-    expenses = [
-        {expID:'EXP001', billType:'SUPPLIER', date:d(-20), billDate:d(-20), expenseDate:d(-20), category:'Office Rent', vendor:'Estate Owner', description:'Office rent - monthly', billAmtINR:18000, amount:18000, status:'Paid', bankAccountId:'BA001', ledgerAccountId:'COA-5400'},
-        {expID:'EXP002', billType:'STATUTORY', date:d(-6),  billDate:d(-6),  expenseDate:d(-6),  category:'Utilities',   vendor:'TNEB', description:'Electricity bill', billAmtINR:3240, amount:3240, status:'Paid', bankAccountId:'BA003'}
-    ];
-    directorExpenses = [
-        {deID:'DE001', director:'dir1', date:d(-15), expDate:d(-15), description:'Client meeting - fuel', amount:1200, billStatus:'available', reimbursed:false},
-        {deID:'DE002', director:'dir1', date:d(-5),  expDate:d(-5),  description:'Port entry pass renewal', amount:2500, billStatus:'pending', reimbursed:false}
-    ];
-    paymentRequests = [{prID:'PR2627003', date:d(-4), payee:'Precision Engine Spares Co', payeeName:'Precision Engine Spares Co', amount:29264, purpose:'PO2627001 - piston ring sets', status:'Pending', requestedBy:'Demo Admin'}];
-
-    pettyCashOffices = [{officeID:'PCO001', officeName:'Head Office - Chennai', custodianStaffID:'ST001', custodianName:'ARJUN KUMAR', imprestLimit:10000}];
-    pettyCashTransactions = [
-        {txnID:'PCT001', officeID:'PCO001', txnType:'Replenishment', txnDate:d(-30), amount:10000, description:'Opening imprest', fromBankAccountID:'BA001'},
-        {txnID:'PCT002', officeID:'PCO001', txnType:'Expense', txnDate:d(-22), amount:450, description:'Courier charges', head:'Postage'},
-        {txnID:'PCT003', officeID:'PCO001', txnType:'Expense', txnDate:d(-11), amount:1200, description:'Printer cartridge', head:'Stationery'}
-    ];
-    pettyCashStatements = [];
-
-    companyDocuments = [
-        {docID:'DOC001', title:'GST Registration Certificate', category:'Statutory', expiryDate:'', addedOn:d(-300)},
-        {docID:'DOC002', title:'Shop & Establishment License', category:'Statutory', expiryDate:d(45), addedOn:d(-320)}
-    ];
-
-    appUsers = [
-        {userID:'U001', name:'DEMO ADMIN',    role:'Admin',     active:true, pin:'x', createdAt:d(-100)},
-        {userID:'U002', name:'DEMO ACCOUNTS', role:'Accounts',  active:true, pin:'x', createdAt:d(-100)},
-        {userID:'U003', name:'DEMO VIEWER',   role:'View Only', active:true, pin:'x', createdAt:d(-100)}
-    ];
-    auditLog = [
-        {ts:new Date().toISOString(), user:'DEMO ADMIN', action:'Login', detail:'Demo session started'},
-        {ts:new Date(Date.now()-864e5).toISOString(), user:'DEMO ACCOUNTS', action:'Invoice', detail:'INV2627002 marked Paid'}
-    ];
-    currentUser = {email:'demo@example.com', name:'Demo Admin'};
-    accessToken = 'DEMO-TOKEN';
-    _bmsSession = {userID:'U001', name:'DEMO ADMIN', role:'Admin', loginAt:Date.now(), ts:Date.now()};
-
-    window.saveData = async function(type){ console.log('[DEMO] save skipped:', type); };
-    window.saveFileToDrive = async function(){ return true; };
-    window.loadFileFromDrive = async function(){ return null; };
-    window.loadDataFromDrive = async function(){};
-    window.refreshDataFromDrive = async function(){};
-    window.handleSignIn = function(){ alert('This is a demo build - no sign-in needed. Data is fictitious and nothing is saved.'); };
-    window.handleSignOut = function(){ location.reload(); };
-    window.syncToGoogleSheets = async function(){ alert('Google Sheets sync is disabled in the demo build.'); };
-    window.gapiLoaded = function(){}; window.gisLoaded = function(){};
-
-    try { renderApp(); } catch(e) { console.error('[DEMO] renderApp failed:', e); }
-
-    const rb = document.createElement('div');
-    rb.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99998;background:linear-gradient(90deg,#b45309,#d97706);color:#fff;text-align:center;font:600 12px/1.6 sans-serif;padding:5px';
-    rb.textContent = 'DEMO - Demo Engineering Service company - fictitious sample data - changes are not saved';
-    document.body.appendChild(rb);
-    document.title = 'DEMO - Easy BMS';
-})();
-</script>
 </body>
 </html>
