@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>IMSE Field App</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- DEMO: Google sign-in removed -->
-    <!-- DEMO: Google API removed -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
@@ -870,6 +870,10 @@
     };
 
     // ── STATE ─────────────────────────────────────────────────────
+    // DEMO MODE — this is the ems-demo copy of the field app. No Google
+    // login, fake seed data, every save is a no-op. Toggle off with ?live=1.
+    const DEMO_MODE = (typeof window !== 'undefined')
+        && !/[?&]live=1\b/.test(window.location.search);
     let tokenClient, accessToken = null;
     let projectExpenses = [], workLogs = [], staffList = [], tokenRefreshTimer = null;
     let fundRequests = [], fundPools = [];   // NEW: pool-based fund tracking (Phase A+B)
@@ -887,6 +891,7 @@
 
     // ── GOOGLE AUTH ───────────────────────────────────────────────
     function gapiLoaded() {
+        if (typeof DEMO_MODE !== 'undefined' && DEMO_MODE) { _bootFieldDemo(); return; }
         gapi.load('client', async () => {
             await gapi.client.init({ discoveryDocs: DISCOVERY_DOCS });
 
@@ -940,6 +945,7 @@
     }
 
     function gisLoaded() {
+        if (typeof DEMO_MODE !== 'undefined' && DEMO_MODE) return;
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
@@ -1024,6 +1030,56 @@
     }
 
     function handleSignIn() { tokenClient.requestAccessToken({ prompt: 'select_account' }); }
+
+    // ── DEMO MODE seed + boot (ems-demo copy) ─────────────────────
+    function _seedFieldDemo() {
+        const today = new Date();
+        const iso = d => d.toISOString().split('T')[0];
+        const daysAgo = n => { const d = new Date(today); d.setDate(d.getDate()-n); return iso(d); };
+        appSettings = { companyName:'IMSE Tech Services Pvt Ltd (DEMO)', companyGST:'27AADCI2387J1ZA' };
+        staffList = [
+            { staffID:'STF-D003', name:'G RAJESH', designation:'Engineer', status:'Active' },
+            { staffID:'STF-D004', name:'SANTHOSHKUMAR M', designation:'Senior Technician', status:'Active' },
+            { staffID:'STF-D005', name:'PRABAKARAN R', designation:'Technician', status:'Active' }
+        ];
+        projectExpenses = [
+            { projExpID:'PJ-D001', projectName:'PJT-100 Chennai camp', client:'BRAVO SHIPMANAGEMENT', status:'Active', totalFunds:50000,
+              items:[
+                { itemID:'PI1', date:daysAgo(6), category:'Food', description:'Team meals — 3 persons', amount:2400, paidBy:'SANTHOSHKUMAR M' },
+                { itemID:'PI2', date:daysAgo(4), category:'Local Travel', description:'Auto to port & back', amount:600, paidBy:'G RAJESH' }
+              ], fundRequests:[], fundTransfers:[] },
+            { projExpID:'PJ-D002', projectName:'MV HALDI — cylinder head', client:'THE SHIPPING CORPORATION OF INDIA LTD', status:'Active', totalFunds:25000,
+              items:[{ itemID:'PI3', date:daysAgo(2), category:'Transport', description:'Cylinder head ship-to-shore', amount:18880, paidBy:'SANTHOSHKUMAR M' }],
+              fundRequests:[], fundTransfers:[] }
+        ];
+        workLogs = [
+            { logID:'WL-D001', staffID:'STF-D003', staffName:'G RAJESH', date:daysAgo(3), project:'PJT-100 Chennai camp', vessel:'SAFESEA SINDOOR', workDone:'Aux engine top overhaul — units 1 & 2 completed. Deflection within limits.', hoursSpent:9, photos:[], remarks:'Awaiting spares for unit 3' },
+            { logID:'WL-D002', staffID:'STF-D004', staffName:'SANTHOSHKUMAR M', date:daysAgo(1), project:'MV HALDI — cylinder head', vessel:'MV HALDI', workDone:'Cylinder head landed ashore, dismantled for inspection.', hoursSpent:7, photos:[], remarks:'' }
+        ];
+        fundRequests = [
+            { id:'FR-D001', staffID:'STF-D003', staffName:'G RAJESH', amount:5000, purpose:'Food & local travel — Chennai camp', status:'Pending', requestDate:daysAgo(2), projExpID:'PJ-D001' }
+        ];
+        fundPools = [
+            { id:'FP-D001', poolName:'Chennai camp pool', status:'Active', totalAmount:50000, disbursed:15000,
+              disbursements:[{date:daysAgo(10),amount:5000,to:'SANTHOSHKUMAR M',purpose:'Food & local travel'},{date:daysAgo(6),amount:10000,to:'SANTHOSHKUMAR M',purpose:'Victualing'}] }
+        ];
+    }
+
+    function _showFieldDemoBanner() {
+        if (document.getElementById('fieldDemoBanner')) return;
+        const b = document.createElement('div');
+        b.id = 'fieldDemoBanner';
+        b.style.cssText = 'position:fixed;bottom:64px;left:0;right:0;z-index:60;background:linear-gradient(90deg,#7c3aed,#0d7c66);color:#fff;text-align:center;padding:5px 10px;font-size:11px;font-weight:600';
+        b.innerHTML = '🎭 DEMO — explore freely. Nothing is saved; refresh resets. Sample data only.';
+        document.body.appendChild(b);
+    }
+
+    function _bootFieldDemo() {
+        try { _seedFieldDemo(); } catch(e){ console.error('Field demo seed failed:', e); }
+        currentUser = null;
+        renderUserSelect();      // authentic flow — pick a technician
+        _showFieldDemoBanner();
+    }
 
     function handleSignOut() {
         stopTokenRefresh();
@@ -1342,6 +1398,7 @@
 
     // ── POLLING ─────────────────────────────────────────────────────
     async function _concurPollOnce() {
+        if (typeof DEMO_MODE!=='undefined' && DEMO_MODE) return;
         if (!accessToken || !currentUser) return;
         if (document.visibilityState !== 'visible') return;
 
@@ -1403,6 +1460,7 @@
         _concur.timer = setInterval(_concurPollOnce, ms);
     }
     function _startConcurrencyPolling() {
+        if (typeof DEMO_MODE!=='undefined' && DEMO_MODE) return;
         if (!accessToken) return;
         _restartPollTimer();
         setTimeout(_concurPollOnce, 1500);  // baseline poll soon after start
@@ -1683,6 +1741,7 @@
     }
 
     async function saveData(type, data) {
+        if (typeof DEMO_MODE !== 'undefined' && DEMO_MODE) return; // demo: no persistence
         if (!accessToken) { showToast('Session expired — please sign in again'); handleSignOut(); return; }
         const idMap = {
             projectExpenses: SHARED_FILE_IDS.projectExpenses,
@@ -1953,6 +2012,7 @@
     }
 
     async function syncData(btn) {
+        if (typeof DEMO_MODE!=='undefined' && DEMO_MODE){ if(typeof showToast==='function') showToast('Demo mode — data is static'); return; }
         const orig = btn.innerHTML;
         btn.innerHTML = '<svg class="spin" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0019.49 15"/></svg> Syncing…';
         btn.disabled = true;
@@ -2010,13 +2070,18 @@
                 const lbl = s==='Pending'?'Pending — awaiting office':s==='Approved'?'Approved — awaiting bank transfer':s==='Disbursed'?'Disbursed — funds received':s==='Rejected'?'Rejected: '+(lastReq.rejectReason||'No reason'):'Cancelled by you';
                 reqStatusInfo = {color:col,bg,icon:ico,label:lbl};
                 const bs = "padding:4px 10px;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap";
+                // Universal "📤 Share" button — available regardless of status
+                // so techs can WhatsApp / Email a snapshot of the request at
+                // any point (pending → chasing office, disbursed → confirming
+                // receipt, rejected → forwarding for a second review, etc.).
+                const shareBtn = `<button onclick="shareFundRequest('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}" title="Share via WhatsApp / Email / other apps">📤 Share</button>`;
                 if (s==='Pending') {
-                    reqActions = `<button onclick="editFundRequest('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}">✏️ Edit</button><button onclick="cancelFundRequest('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}">Cancel</button>`;
+                    reqActions = `${shareBtn}<button onclick="editFundRequest('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}">✏️ Edit</button><button onclick="cancelFundRequest('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}">Cancel</button>`;
                 } else if (s==='Rejected'||s==='Cancelled') {
-                    reqActions = `<button onclick="resubmitFundRequest('${lastReq.requestID}')" style="${bs};background:#0d7c66;color:#fff">🔄 Resubmit</button>`;
+                    reqActions = `${shareBtn}<button onclick="resubmitFundRequest('${lastReq.requestID}')" style="${bs};background:#0d7c66;color:#fff">🔄 Resubmit</button>`;
                 } else if (s==='Approved'||s==='Disbursed') {
                     const pc=(lastReq.correctionRequests||[]).filter(c=>!c.resolvedAt).length;
-                    reqActions = pc>0?`<span style="font-size:10px;padding:2px 8px;background:rgba(0,0,0,.06);border-radius:5px">📨 Correction pending (${pc})</span>`:`<button onclick="requestFundCorrection('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}">📨 Request Correction</button>`;
+                    reqActions = pc>0?`${shareBtn}<span style="font-size:10px;padding:2px 8px;background:rgba(0,0,0,.06);border-radius:5px">📨 Correction pending (${pc})</span>`:`${shareBtn}<button onclick="requestFundCorrection('${lastReq.requestID}')" style="${bs};background:rgba(0,0,0,.08);color:${col}">📨 Request Correction</button>`;
                 }
                 editBadge = (lastReq.editHistory&&lastReq.editHistory.length)?`<span style="font-size:9px;opacity:.7;margin-left:6px">✎</span>`:'';
             } catch(e) { console.warn('Fund pool render error:',e); reqStatusInfo=null; }
@@ -2084,9 +2149,9 @@
                     const proj = (p.projectName || p.projectRef || p.linkedProjectRef || '');
                     const expCount = (p.allocations||[]).length || 0;
                     return `
-                    <div style="padding:12px 16px;border-top:1px solid #f0fdf4;cursor:pointer" onclick="switchView('projexp')">
+                    <div style="padding:12px 16px;border-top:1px solid #f0fdf4">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-                            <div style="flex:1;min-width:0">
+                            <div style="flex:1;min-width:0;cursor:pointer" onclick="switchView('projexp')">
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px">
                                     <span style="font-size:13px;font-weight:700;color:#0d7c66;font-family:monospace">Fund  ${p.poolID}</span>
                                     ${tech ? `<span style="font-size:12px;font-weight:600;color:#1f2937">· ${tech}</span>` : ''}
@@ -2096,9 +2161,14 @@
                                     Disb ${p.disbursedDate||'—'} · ${fmt2(total)} from ${p.bankName||'bank'}${expCount?' · '+expCount+' expense'+(expCount===1?'':'s'):''}
                                 </div>
                             </div>
-                            <span style="font-size:18px;color:#d1d5db;margin-left:8px">›</span>
+                            <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
+                                <button onclick="event.stopPropagation();sharePool('${p.poolID}')"
+                                    title="Share this fund/pool via WhatsApp / Email"
+                                    style="padding:4px 8px;border:1px solid #bbf7d0;background:#f0fdf4;color:#065f46;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">📤 Share</button>
+                                <span style="font-size:18px;color:#d1d5db">›</span>
+                            </div>
                         </div>
-                        <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:6px;cursor:pointer" onclick="switchView('projexp')">
                             <div style="flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
                                 <div style="height:100%;width:${pct}%;background:${barColor};border-radius:3px;transition:width .3s"></div>
                             </div>
@@ -2553,6 +2623,15 @@
             closeFundReqModal();
             renderView();
             showToast(_frMode === 'resubmit' ? '🔄 Request resubmitted to office' : '📤 Fund request submitted to office');
+            // Immediately offer to share the just-submitted request. The tech
+            // often wants to WhatsApp a screenshot to the office as a heads-up
+            // right after clicking Submit — surfacing the share modal here
+            // saves them from having to find the request card and then click
+            // Share separately. Small delay (350 ms) lets the toast + modal
+            // close animations finish so the share sheet slides in cleanly.
+            setTimeout(() => {
+                try { shareFundRequest(newReq.requestID); } catch(e) { /* silent — share is optional */ }
+            }, 350);
         } catch(err) {
             // Rollback in-memory if save failed
             fundRequests = fundRequests.filter(r => r.requestID !== newReq.requestID);
@@ -2590,6 +2669,506 @@
         } catch(err) {
             showToast('⚠ Save failed');
         }
+    }
+
+    // ── SHARE FUND REQUEST — image + text via WhatsApp / Email / native share ──
+    // Field techs often need to forward a request outside the app — e.g. ping
+    // the office on WhatsApp when a Pending request has been sitting a while,
+    // or send a Disbursed confirmation to a project superintendent.
+    //
+    // Approach:
+    //  1. Build a hidden styled "receipt" div in the DOM with the full request
+    //  2. Rasterise it to PNG via html2canvas (lazy-loaded from cdnjs)
+    //  3. Try navigator.share({files:[PNG]}) — modern Android/iOS opens the
+    //     native share sheet with WhatsApp, Gmail, Drive, etc. as targets
+    //  4. Fall back to a chooser modal offering:
+    //       - WhatsApp text link (wa.me)
+    //       - Email link (mailto:)
+    //       - Copy text to clipboard
+    //       - Download PNG (for old browsers that can't share files)
+    let _html2canvasLoading = null;
+    async function _loadHtml2Canvas() {
+        if (window.html2canvas) return window.html2canvas;
+        if (_html2canvasLoading) return _html2canvasLoading;
+        _html2canvasLoading = new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            s.onload = () => res(window.html2canvas);
+            s.onerror = () => rej(new Error('Failed to load html2canvas'));
+            document.head.appendChild(s);
+        });
+        return _html2canvasLoading;
+    }
+
+    // Text-only summary — used in WhatsApp/email fallbacks AND as the caption
+    // that accompanies the image in a Web Share API call.
+    function _fundReqShareText(r) {
+        const requester = (staffList||[]).find(s => s.staffID === r.requestedBy)?.name || r.requestedByName || 'Unknown';
+        const statusEmoji = r.status === 'Pending' ? '⏳'
+                          : r.status === 'Approved' ? '✅'
+                          : r.status === 'Disbursed' ? '💸'
+                          : r.status === 'Rejected' ? '❌'
+                          : r.status === 'Cancelled' ? '🚫' : '•';
+        const statusDetail = r.status === 'Pending' ? 'awaiting office review'
+                           : r.status === 'Approved' ? 'awaiting bank transfer'
+                           : r.status === 'Disbursed' ? `funds received on ${r.disbursedDate||''}`
+                           : r.status === 'Rejected' ? `reason: ${r.rejectReason||'not stated'}`
+                           : r.status === 'Cancelled' ? (r.cancelledReason||'cancelled by tech')
+                           : '';
+        // Company name — best-effort pull from any known settings source.
+        const co = (typeof settings !== 'undefined' && settings?.companyName)
+                || 'IMSE Tech Services';
+        const lines = [
+            `📤 *FUND REQUEST* — ${co}`,
+            '',
+            `*Request ID:* \`${r.requestID}\``,
+            `*Requested by:* ${requester}`,
+            `*Amount:* ₹${(+r.requestedAmount||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+            `*Date:* ${r.requestedDate||''}${r.requestedTime?' '+r.requestedTime:''}`,
+            r.project ? `*Project:* ${r.project}` : '',
+            `*Purpose:* ${r.purpose||'—'}`,
+            r.notes ? `*Notes:* ${r.notes}` : '',
+            '',
+            `*Status:* ${statusEmoji} ${r.status} — ${statusDetail}`,
+        ];
+        if (r.status === 'Disbursed') {
+            lines.push('', `*Disbursed:* ₹${(+r.disbursedAmount||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}${r.disbursedDate?' on '+r.disbursedDate:''}${r.transferRefNo?' · Ref '+r.transferRefNo:''}`);
+        }
+        lines.push('', '_Sent from EASY Field App_');
+        return lines.filter(l => l !== null && l !== undefined).join('\n');
+    }
+
+    // Build the hidden DOM receipt used for the screenshot. Kept off-screen
+    // (position:fixed, left:-9999px) so it doesn't flash on the user's view.
+    // Sized for a comfortable phone-share aspect ratio (~ 720x width).
+    function _buildFundReqReceiptDOM(r) {
+        const requester = (staffList||[]).find(s => s.staffID === r.requestedBy)?.name || r.requestedByName || 'Unknown';
+        const co = (typeof settings !== 'undefined' && settings?.companyName) || 'IMSE Tech Services';
+        const statusColor = r.status === 'Pending' ? '#92400e'
+                          : r.status === 'Approved' ? '#1e40af'
+                          : r.status === 'Disbursed' ? '#065f46'
+                          : r.status === 'Rejected' ? '#991b1b' : '#475569';
+        const statusBg    = r.status === 'Pending' ? '#fef3c7'
+                          : r.status === 'Approved' ? '#dbeafe'
+                          : r.status === 'Disbursed' ? '#d1fae5'
+                          : r.status === 'Rejected' ? '#fee2e2' : '#f1f5f9';
+        const statusIcon  = r.status === 'Pending' ? '⏳'
+                          : r.status === 'Approved' ? '✅'
+                          : r.status === 'Disbursed' ? '💸'
+                          : r.status === 'Rejected' ? '❌' : '⊘';
+        const div = document.createElement('div');
+        div.id = 'fundReqReceiptCapture';
+        div.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:0;box-sizing:border-box';
+        const disbursedBlock = r.status === 'Disbursed' ? `
+            <div style="margin-top:16px;padding:14px 16px;background:#ecfdf5;border-left:4px solid #059669;border-radius:6px">
+                <div style="font-size:12px;font-weight:600;color:#065f46;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Disbursement</div>
+                <div style="font-size:14px;color:#065f46">
+                    <b>₹${(+r.disbursedAmount||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</b> transferred on <b>${r.disbursedDate||'—'}</b>
+                    ${r.transferRefNo ? `<br/><span style="font-family:monospace;font-size:12px">Ref: ${r.transferRefNo}</span>` : ''}
+                    ${r.disbursedToBank ? `<br/><span style="font-size:12px">To: ${r.disbursedToBank}${r.disbursedToIFSC?' · '+r.disbursedToIFSC:''}</span>` : ''}
+                </div>
+            </div>` : '';
+        const rejectedBlock = r.status === 'Rejected' && r.rejectReason ? `
+            <div style="margin-top:16px;padding:14px 16px;background:#fef2f2;border-left:4px solid #dc2626;border-radius:6px">
+                <div style="font-size:12px;font-weight:600;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Rejection Reason</div>
+                <div style="font-size:14px;color:#7f1d1d">${(r.rejectReason||'').replace(/</g,'&lt;')}</div>
+            </div>` : '';
+        const notesBlock = r.notes ? `
+            <div style="margin-top:14px">
+                <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Notes / Remarks</div>
+                <div style="font-size:14px;color:#334155;line-height:1.5">${(r.notes||'').replace(/</g,'&lt;')}</div>
+            </div>` : '';
+        div.innerHTML = `
+            <!-- Header strip -->
+            <div style="background:linear-gradient(135deg,#0d7c66,#15803d);padding:20px 24px;color:#fff">
+                <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbf7d0;margin-bottom:4px">Fund Request</div>
+                <div style="font-size:22px;font-weight:800;line-height:1.2">${co.replace(/</g,'&lt;')}</div>
+                <div style="font-size:12px;color:#a7f3d0;margin-top:6px;font-family:monospace">${r.requestID}</div>
+            </div>
+            <!-- Amount hero -->
+            <div style="padding:24px;text-align:center;border-bottom:1px solid #e5e7eb">
+                <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Requested Amount</div>
+                <div style="font-size:38px;font-weight:800;color:#0f172a;line-height:1">₹${(+r.requestedAmount||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                <div style="margin-top:14px;display:inline-block;padding:6px 14px;background:${statusBg};color:${statusColor};border-radius:20px;font-size:13px;font-weight:700">${statusIcon} ${r.status}</div>
+            </div>
+            <!-- Details grid -->
+            <div style="padding:20px 24px">
+                <div style="display:grid;grid-template-columns:110px 1fr;gap:8px 16px;font-size:14px">
+                    <div style="color:#64748b;font-weight:600">Requested by</div>
+                    <div style="color:#0f172a;font-weight:600">${requester.replace(/</g,'&lt;')}</div>
+
+                    <div style="color:#64748b;font-weight:600">Date</div>
+                    <div style="color:#0f172a">${r.requestedDate||'—'}${r.requestedTime?' at '+r.requestedTime:''}</div>
+
+                    ${r.project ? `<div style="color:#64748b;font-weight:600">Project</div><div style="color:#0f172a">${(r.project||'').replace(/</g,'&lt;')}</div>` : ''}
+
+                    <div style="color:#64748b;font-weight:600">Purpose</div>
+                    <div style="color:#0f172a;line-height:1.5">${(r.purpose||'—').replace(/</g,'&lt;')}</div>
+                </div>
+                ${notesBlock}
+                ${disbursedBlock}
+                ${rejectedBlock}
+            </div>
+            <!-- Footer -->
+            <div style="padding:12px 24px;background:#f8fafc;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b">
+                <div>Generated ${new Date().toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</div>
+                <div style="font-weight:600">EASY Field App</div>
+            </div>
+        `;
+        return div;
+    }
+
+    async function shareFundRequest(reqID) {
+        const r = fundRequests.find(x => x.requestID === reqID);
+        if (!r) { showToast('⚠ Request not found'); return; }
+
+        const shareText = _fundReqShareText(r);
+
+        // Show the chooser modal IMMEDIATELY — predictable UX. On the first
+        // build the "Download image" button and preview area are in a
+        // "generating…" state; once html2canvas finishes rasterising the
+        // receipt (~500ms), we update the same modal in place with the
+        // preview and enable the button. If image capture fails, WhatsApp
+        // / Email / Copy Text still work — the tech always has something
+        // to click. This replaces the previous "try navigator.share first,
+        // fall back to modal" flow, which on some browsers appeared to do
+        // nothing at all (navigator.share returned silently without any
+        // visible share sheet).
+        _openShareChooser(r, shareText, null, null);
+
+        // Rasterise the receipt in the background
+        try {
+            const html2canvas = await _loadHtml2Canvas();
+            const receipt = _buildFundReqReceiptDOM(r);
+            document.body.appendChild(receipt);
+            await new Promise(res => requestAnimationFrame(res));
+            const canvas = await html2canvas(receipt, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                useCORS: true,
+                logging: false
+            });
+            receipt.remove();
+            const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.95));
+            const pngFile = pngBlob ? new File([pngBlob], `FundRequest_${r.requestID}.png`, { type: 'image/png' }) : null;
+            _updateShareChooserPreview(pngBlob, pngFile, r.requestID);
+        } catch(err) {
+            console.warn('Image capture failed — text-only share still works', err);
+            document.getElementById('fundReqReceiptCapture')?.remove();
+            _updateShareChooserPreview(null, null, r.requestID, err?.message || 'preview unavailable');
+        }
+    }
+
+    // Update the preview & Download button after html2canvas finishes
+    function _updateShareChooserPreview(pngBlob, pngFile, reqID, errMsg) {
+        const modal = document.getElementById('shareChooserModal');
+        if (!modal) return;
+        window._shareBlob = pngBlob;
+        window._sharePngFile = pngFile;
+        window._shareFilename = `FundRequest_${reqID}.png`;
+
+        // Replace the "generating…" placeholder with the actual preview
+        const previewSlot = modal.querySelector('#shareChooserPreview');
+        if (previewSlot) {
+            if (pngBlob) {
+                const url = URL.createObjectURL(pngBlob);
+                previewSlot.innerHTML = `<img src="${url}" style="width:100%;max-height:220px;object-fit:contain;border:1px solid #e5e7eb;border-radius:8px"/>`;
+            } else {
+                previewSlot.innerHTML = `<div style="padding:20px;text-align:center;border:1px dashed #fca5a5;border-radius:8px;color:#991b1b;font-size:12px;background:#fef2f2">⚠ Preview unavailable${errMsg?': '+errMsg:''} — text share still works</div>`;
+            }
+        }
+
+        // Enable/relabel the Download button
+        const dlBtn = modal.querySelector('#shareChooserDownload');
+        if (dlBtn) {
+            if (pngBlob) {
+                dlBtn.disabled = false;
+                dlBtn.style.opacity = '1';
+                dlBtn.style.cursor = 'pointer';
+                dlBtn.innerHTML = '<span style="font-size:20px">💾</span> Download Image';
+            } else {
+                dlBtn.disabled = true;
+                dlBtn.style.opacity = '.4';
+                dlBtn.style.cursor = 'not-allowed';
+                dlBtn.innerHTML = '<span style="font-size:20px">💾</span> Image unavailable';
+            }
+        }
+
+        // Enable/hide the Native Share button based on file support
+        const nsBtn = modal.querySelector('#shareChooserNative');
+        if (nsBtn) {
+            const canFileShare = pngFile && navigator.canShare && navigator.canShare({ files: [pngFile] });
+            if (canFileShare) {
+                nsBtn.disabled = false;
+                nsBtn.style.opacity = '1';
+                nsBtn.style.cursor = 'pointer';
+                nsBtn.innerHTML = '<span style="font-size:20px">📲</span> Share with image…';
+            } else if (navigator.share) {
+                nsBtn.disabled = false;
+                nsBtn.style.opacity = '1';
+                nsBtn.style.cursor = 'pointer';
+                nsBtn.innerHTML = '<span style="font-size:20px">📲</span> Share text…';
+            } else {
+                nsBtn.style.display = 'none';   // hide on browsers without any Web Share
+            }
+        }
+    }
+
+    function _openShareChooser(r, shareText, pngBlob, pngFile) {
+        const existing = document.getElementById('shareChooserModal');
+        if (existing) existing.remove();
+        const modal = document.createElement('div');
+        modal.id = 'shareChooserModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,0.55);display:flex;align-items:flex-end;justify-content:center;padding:0';
+        const whatsappURL = 'https://wa.me/?text=' + encodeURIComponent(shareText);
+        const mailSubject = `Fund Request ${r.requestID}`;
+        const mailBody = shareText.replace(/\*/g, '');
+        const mailtoURL = `mailto:?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+
+        // Native Share button — its capability + label is set later by
+        // _updateShareChooserPreview once we know whether files can be shared.
+        // Show a "Share text…" default so the button is functional even before
+        // the image finishes rendering.
+        const nativeShareBtn = navigator.share ? `
+            <button id="shareChooserNative" onclick="_shareNativeInvoke()"
+               style="grid-column:1 / -1;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 12px;background:#0f172a;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+               <span style="font-size:20px">📲</span> Share via phone…
+            </button>` : '';
+
+        modal.innerHTML = `
+        <div style="width:100%;max-width:440px;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,0.15);animation:slideUp .25s ease-out;max-height:92vh;overflow-y:auto">
+            <div style="padding:14px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:1">
+                <div>
+                    <div style="font-size:15px;font-weight:700;color:#0f172a">📤 Share fund request</div>
+                    <div style="font-size:11px;color:#64748b;font-family:monospace;margin-top:1px">${r.requestID}</div>
+                </div>
+                <button onclick="document.getElementById('shareChooserModal').remove()" style="background:none;border:none;font-size:22px;color:#64748b;cursor:pointer;padding:0;line-height:1">✕</button>
+            </div>
+            <!-- Preview slot — starts as "generating..." placeholder, replaced when html2canvas done -->
+            <div id="shareChooserPreview" style="padding:10px 16px 0">
+                <div style="padding:38px 20px;text-align:center;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b;font-size:12px;background:#f8fafc">
+                    <div style="display:inline-block;width:26px;height:26px;border:3px solid #cbd5e1;border-top-color:#0d7c66;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+                    <div style="margin-top:8px">Generating preview…</div>
+                </div>
+            </div>
+            <div style="padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                ${nativeShareBtn}
+                <a href="${whatsappURL}" target="_blank" rel="noopener"
+                   onclick="setTimeout(()=>document.getElementById('shareChooserModal')?.remove(),300)"
+                   style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 12px;background:#25d366;color:#fff;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none">
+                   <span style="font-size:20px">💬</span> WhatsApp
+                </a>
+                <a href="${mailtoURL}"
+                   onclick="setTimeout(()=>document.getElementById('shareChooserModal')?.remove(),300)"
+                   style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 12px;background:#3b82f6;color:#fff;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none">
+                   <span style="font-size:20px">✉️</span> Email
+                </a>
+                <button onclick="_shareCopyText()"
+                   style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 12px;background:#f1f5f9;color:#0f172a;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+                   <span style="font-size:20px">📋</span> Copy Text
+                </button>
+                <button id="shareChooserDownload" onclick="_shareDownloadImage()" disabled
+                   style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 12px;background:#f1f5f9;color:#0f172a;border:none;border-radius:10px;font-size:14px;font-weight:700;opacity:.4;cursor:not-allowed">
+                   <span style="font-size:20px">💾</span> Generating…
+                </button>
+            </div>
+            <div style="padding:8px 16px 16px;font-size:11px;color:#64748b;text-align:center">
+                Tip: WhatsApp Web / Email opens with a formatted text message. To attach the image, use "Share via phone" on mobile, or Download Image then attach manually.
+            </div>
+        </div>
+        <style>@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+        document.body.appendChild(modal);
+
+        // Stash so the button handlers can reach them
+        window._shareText = shareText;
+        window._shareBlob = pngBlob;
+        window._sharePngFile = pngFile;
+        window._shareFilename = `FundRequest_${r.requestID}.png`;
+        window._shareRequestID = r.requestID;
+
+        // Click outside to close
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+        // If pngBlob was provided upfront (unlikely with the new flow but
+        // supported for future callers), populate the preview immediately.
+        if (pngBlob) _updateShareChooserPreview(pngBlob, pngFile, r.requestID);
+    }
+
+    // Invoke navigator.share — called by the "Share via phone" button in the
+    // chooser modal. Uses whatever payload is currently ready: file if
+    // rasterised, else text-only.
+    async function _shareNativeInvoke() {
+        try {
+            const title = `Fund Request ${window._shareRequestID||''}`;
+            const text = window._shareText || '';
+            const file = window._sharePngFile;
+            if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ title, text, files: [file] });
+            } else if (navigator.share) {
+                await navigator.share({ title, text });
+            } else {
+                showToast('⚠ Native share not supported — use WhatsApp / Email buttons');
+                return;
+            }
+            document.getElementById('shareChooserModal')?.remove();
+            showToast('✓ Shared');
+        } catch(e) {
+            if (e?.name === 'AbortError') return;   // user cancelled — silent
+            showToast('⚠ Share failed: ' + (e?.message || 'try WhatsApp/Email'));
+        }
+    }
+
+    // ── SHARE POOL / FUND ─────────────────────────────────────────
+    // Every tech sees pools in the Active Pools list regardless of who
+    // originally submitted the fund request that created each pool, so this
+    // is the universal share path — one Share button per pool row triggers
+    // this. The receipt includes disbursed amount/date/bank, current
+    // balance, and — if we can find it — the source fund request's purpose
+    // and requester (via poolID linkage, or a legacy match on amount+tech).
+    function _poolShareText(pool, srcReq) {
+        const co = (typeof settings !== 'undefined' && settings?.companyName) || 'IMSE Tech Services';
+        let bal = 0, spent = 0, total = parseFloat(pool.amount || pool.disbursedAmt || 0);
+        try { const b = _fieldComputePoolBalance(pool); bal = b.balance||0; spent = b.spent||0; total = b.totalDisbursed||total; } catch(e){}
+        const lines = [
+            `📤 *FUND POOL* — ${co}`,
+            '',
+            `*Pool ID:* \`${pool.poolID}\``,
+            `*Disbursed:* ₹${total.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}${pool.disbursedDate?' on '+pool.disbursedDate:''}`,
+            pool.bankName ? `*From bank:* ${pool.bankName}` : '',
+            (pool.technician || pool.techName) ? `*Technician:* ${pool.technician||pool.techName}` : '',
+            (pool.projectName || pool.projectRef) ? `*Project:* ${pool.projectName||pool.projectRef}` : '',
+            '',
+            `*Spent:* ₹${spent.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+            `*Balance:* ₹${bal.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`,
+        ];
+        if (srcReq) {
+            lines.push('', `*Source Request:* \`${srcReq.requestID}\``);
+            if (srcReq.purpose)         lines.push(`*Purpose:* ${srcReq.purpose}`);
+            if (srcReq.requestedByName) lines.push(`*Requested by:* ${srcReq.requestedByName}`);
+        }
+        lines.push('', '_Sent from EASY Field App_');
+        return lines.filter(l => l !== null && l !== undefined && l !== false).join('\n');
+    }
+
+    function _buildPoolReceiptDOM(pool, srcReq) {
+        const co = (typeof settings !== 'undefined' && settings?.companyName) || 'IMSE Tech Services';
+        let bal = 0, spent = 0, total = parseFloat(pool.amount || pool.disbursedAmt || 0);
+        try { const b = _fieldComputePoolBalance(pool); bal = b.balance||0; spent = b.spent||0; total = b.totalDisbursed||total; } catch(e){}
+        const pct = total > 0 ? Math.min(100, Math.round(spent/total*100)) : 0;
+        const barColor = pct > 90 ? '#dc2626' : pct > 70 ? '#f59e0b' : '#16a34a';
+        const balColor = bal < 500 ? '#dc2626' : bal < 1000 ? '#f59e0b' : '#15803d';
+        const div = document.createElement('div');
+        div.id = 'fundReqReceiptCapture';
+        div.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:0;box-sizing:border-box';
+        const escHtml = s => (s||'').toString().replace(/</g,'&lt;');
+        const srcBlock = srcReq ? `
+            <div style="margin-top:16px;padding:14px 16px;background:#f0f9ff;border-left:4px solid #0284c7;border-radius:6px">
+                <div style="font-size:12px;font-weight:600;color:#075985;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Source Fund Request</div>
+                <div style="font-size:14px;color:#0c4a6e;line-height:1.6">
+                    <div><b>${escHtml(srcReq.requestID)}</b>${srcReq.requestedByName?' · requested by <b>'+escHtml(srcReq.requestedByName)+'</b>':''}</div>
+                    ${srcReq.purpose?`<div style="margin-top:4px">${escHtml(srcReq.purpose)}</div>`:''}
+                </div>
+            </div>` : '';
+        div.innerHTML = `
+            <div style="background:linear-gradient(135deg,#0d7c66,#15803d);padding:20px 24px;color:#fff">
+                <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#bbf7d0;margin-bottom:4px">Fund Pool</div>
+                <div style="font-size:22px;font-weight:800;line-height:1.2">${escHtml(co)}</div>
+                <div style="font-size:13px;color:#a7f3d0;margin-top:6px;font-family:monospace">${escHtml(pool.poolID)}</div>
+            </div>
+            <div style="padding:24px;text-align:center;border-bottom:1px solid #e5e7eb">
+                <div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Current Balance</div>
+                <div style="font-size:38px;font-weight:800;color:${balColor};line-height:1">₹${bal.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                <div style="margin-top:14px;font-size:13px;color:#64748b">
+                    <b>${pct}%</b> spent — ₹${spent.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})} of ₹${total.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                </div>
+                <div style="margin-top:10px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px"></div>
+                </div>
+            </div>
+            <div style="padding:20px 24px">
+                <div style="display:grid;grid-template-columns:130px 1fr;gap:8px 16px;font-size:14px">
+                    <div style="color:#64748b;font-weight:600">Disbursed</div>
+                    <div style="color:#0f172a"><b>₹${total.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</b>${pool.disbursedDate?' on '+escHtml(pool.disbursedDate):''}</div>
+                    ${pool.bankName ? `<div style="color:#64748b;font-weight:600">From bank</div><div style="color:#0f172a">${escHtml(pool.bankName)}</div>` : ''}
+                    ${pool.transferRefNo ? `<div style="color:#64748b;font-weight:600">Transfer Ref</div><div style="color:#0f172a;font-family:monospace;font-size:13px">${escHtml(pool.transferRefNo)}</div>` : ''}
+                    ${(pool.technician||pool.techName) ? `<div style="color:#64748b;font-weight:600">Technician</div><div style="color:#0f172a;font-weight:600">${escHtml(pool.technician||pool.techName)}</div>` : ''}
+                    ${(pool.projectName||pool.projectRef||pool.linkedProjectRef) ? `<div style="color:#64748b;font-weight:600">Project</div><div style="color:#0f172a">${escHtml(pool.projectName||pool.projectRef||pool.linkedProjectRef)}</div>` : ''}
+                </div>
+                ${srcBlock}
+            </div>
+            <div style="padding:12px 24px;background:#f8fafc;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b">
+                <div>Generated ${new Date().toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}</div>
+                <div style="font-weight:600">EASY Field App</div>
+            </div>`;
+        return div;
+    }
+
+    async function sharePool(poolID) {
+        const pool = (fundPools||[]).find(p => p.poolID === poolID);
+        if (!pool) { showToast('⚠ Pool not found'); return; }
+        // Try to link back to the originating fund request so the receipt
+        // shows purpose + requester. Falls back to legacy amount+tech match
+        // for pools created before requestID linkage was introduced.
+        let srcReq = (fundRequests||[]).find(r => r.poolID === poolID);
+        if (!srcReq) {
+            const cand = (fundRequests||[]).filter(r => r.status === 'Disbursed'
+                && (+r.disbursedAmount||0) === (+pool.amount||0)
+                && r.requestedBy === (pool.technicianID||pool.staffID||''));
+            if (cand.length === 1) srcReq = cand[0];
+        }
+
+        const shareText = _poolShareText(pool, srcReq);
+        const pseudoReq = { requestID: pool.poolID };   // gives the modal a header line
+        _openShareChooser(pseudoReq, shareText, null, null);
+
+        try {
+            const html2canvas = await _loadHtml2Canvas();
+            const receipt = _buildPoolReceiptDOM(pool, srcReq);
+            document.body.appendChild(receipt);
+            await new Promise(res => requestAnimationFrame(res));
+            const canvas = await html2canvas(receipt, {
+                backgroundColor:'#ffffff', scale:2, useCORS:true, logging:false
+            });
+            receipt.remove();
+            const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.95));
+            const pngFile = pngBlob ? new File([pngBlob], `Pool_${pool.poolID}.png`, {type:'image/png'}) : null;
+            window._shareFilename = `Pool_${pool.poolID}.png`;
+            _updateShareChooserPreview(pngBlob, pngFile, pool.poolID);
+        } catch(err) {
+            console.warn('Pool image capture failed', err);
+            document.getElementById('fundReqReceiptCapture')?.remove();
+            _updateShareChooserPreview(null, null, pool.poolID, err?.message || 'preview unavailable');
+        }
+    }
+
+    async function _shareCopyText() {
+        try {
+            await navigator.clipboard.writeText(window._shareText || '');
+            showToast('✓ Text copied to clipboard');
+        } catch(e) {
+            // Legacy fallback for iOS < 13 / older Android
+            const ta = document.createElement('textarea');
+            ta.value = window._shareText || '';
+            ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); showToast('✓ Text copied'); }
+            catch(err) { showToast('⚠ Copy failed — long-press the preview to copy manually'); }
+            ta.remove();
+        }
+    }
+
+    function _shareDownloadImage() {
+        if (!window._shareBlob) { showToast('⚠ Image not ready'); return; }
+        const url = URL.createObjectURL(window._shareBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = window._shareFilename || 'FundRequest.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast('✓ Image downloaded — attach it from your gallery');
     }
 
     // ── EDIT: open modal pre-filled with this Pending request's values ──
@@ -5897,9 +6476,12 @@
                 // Vertical divider between columns
                 if(i<2){doc.setDrawColor(200,200,200);doc.setLineWidth(0.3);doc.line(x+colW,fY,x+colW,fY+SIG_H);}
             });
-            // Page number centred at bottom
+            // Company + build tag centred at bottom. Page number moved to
+            // top-right corner (see finalisation loop) — the old placement
+            // at fY+18.5 (~y=293mm) sat inside most printers' 5-8mm bottom
+            // physical margin and got silently clipped on printouts.
             doc.setFontSize(6.5);doc.setFont('helvetica','italic');doc.setTextColor(130,130,130);
-            doc.text(co+' — Page '+p+' of '+total+'  ·  '+_PDF_BUILD,PW/2,fY+18.5,{align:'center'});
+            doc.text(co+'  ·  '+_PDF_BUILD,PW/2,fY+18.5,{align:'center'});
         }
 
         // Page 1
@@ -6030,7 +6612,20 @@
                         return '• ' + content.replace(/<[^>]+>/g, '').trim() + '\n';
                     });
                 });
-                // Block elements → newlines, then strip remaining tags
+                // Block elements → newlines, then strip remaining tags.
+                // Also strip zero-width and control Unicode characters that
+                // frequently hitch-hike on text copy-pasted from Word/PDF/
+                // Google Docs — they collapse visually in the browser but
+                // jsPDF renders each one as a real character-cell, causing
+                // the "letter-spaced" appearance on random lines (e.g. the
+                // artefact seen on Details line 4 in the July report).
+                //   \u00A0 — non-breaking space (renders as space, but some
+                //            engines add an extra character advance)
+                //   \u200B / \u200C / \u200D — zero-width space / non-joiner /
+                //            joiner (invisible but occupy a glyph slot)
+                //   \u200E / \u200F — LTR / RTL marks
+                //   \u2028 / \u2029 — line/paragraph separator
+                //   \uFEFF — BOM / zero-width no-break space
                 return html
                     .replace(/<\/p>|<br\s*\/?>/gi, '\n')
                     .replace(/<[^>]+>/g, '')
@@ -6038,6 +6633,13 @@
                     .replace(/&amp;/g, '&')
                     .replace(/&lt;/g, '<')
                     .replace(/&gt;/g, '>')
+                    .replace(/\u00A0/g, ' ')
+                    .replace(/[\u200B-\u200F\u2028\u2029\uFEFF]/g, '')
+                    // Collapse runs of horizontal whitespace within a line
+                    // (leftovers from justified-text tabs, letter-spacing CSS
+                    // that emitted spaces on paste, etc.) — never crosses
+                    // newlines so paragraph structure is preserved.
+                    .replace(/[ \t]{2,}/g, ' ')
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
             };
@@ -6048,10 +6650,16 @@
              {title:'Recommendations',            text:_rtToText(d.recommendations),col:[21,128,61]}
             ].filter(s=>s.text&&s.text.trim()).forEach(s=>{
                 if(y+16>CONTENT_BOTTOM){doc.addPage();drawPageHeader();y=42;}
+                // Explicit halign:'left' + overflow:'linebreak' — under some
+                // jsPDF-autotable versions, individual lines could get auto-
+                // justified (letter spread wide across the cell) when the
+                // line was close to the cell-width boundary. Locking these
+                // options prevents that behaviour so paragraphs render with
+                // consistent left-flush wrapping.
                 doc.autoTable({startY:y,margin:{top:42,left:ML,right:MR,bottom:SIG_H+FOOTER_SAFETY+2},theme:'grid',
-                    styles:{fontSize:8.5,cellPadding:3},
-                    headStyles:{fillColor:s.col,textColor:[255,255,255],fontStyle:'bold',fontSize:8},
-                    head:[[s.title]],body:[[s.text]],columnStyles:{0:{cellWidth:CW}},
+                    styles:{fontSize:8.5,cellPadding:3,halign:'left',overflow:'linebreak',valign:'top'},
+                    headStyles:{fillColor:s.col,textColor:[255,255,255],fontStyle:'bold',fontSize:8,halign:'left'},
+                    head:[[s.title]],body:[[s.text]],columnStyles:{0:{cellWidth:CW,halign:'left'}},
                     didDrawPage:(data)=>{ if(data.pageNumber>1) drawPageHeader(); }
                 });
                 y=doc.lastAutoTable.finalY+3;
@@ -6279,9 +6887,20 @@
             });
         }
 
-        // Apply header + signature footer on all pages
+        // Apply header + top-right page number + signature footer on all pages
         const total=doc.getNumberOfPages();
-        for(let p=1;p<=total;p++){doc.setPage(p);drawPageHeader();drawSignatureFooter(p,total);}
+        for(let p=1;p<=total;p++){
+            doc.setPage(p);
+            drawPageHeader();
+            // Top-right page numbering — sits above the header separator,
+            // well within any printer's safe margin (physical unprintable
+            // area on most home/office printers is ~3-8mm on each edge).
+            // Placed at y=8 (13mm above the header title band) and right-
+            // aligned at PW-MR so it lines up with the right content edge.
+            doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(15,58,95);
+            doc.text('Page '+p+' of '+total, PW-MR, 8, {align:'right'});
+            drawSignatureFooter(p,total);
+        }
 
         const safe=(wl.project||'WorkReport').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_-]/g,'');
         const filename = entryIDFilter
@@ -6301,73 +6920,7 @@
     window.gisLoaded  = gisLoaded;
     renderLogin();
 </script>
-<!-- DEMO: removed -->
-<!-- DEMO: removed -->
-
-<script>
-/* ═══════ FIELD APP DEMO MODE — fictitious data, nothing persists ═══════ */
-(function(){
-    const today = new Date();
-    const d = (o) => { const x = new Date(today); x.setDate(x.getDate()+o); return x.toISOString().split('T')[0]; };
-
-    appSettings = { companyName: 'Demo Engineering Service company' };
-
-    staffList = [
-        {staffID:'ST003', name:'MOHAN RAJ',   staffType:'Field', designation:'Sr. Marine Technician', status:'Active'},
-        {staffID:'ST004', name:'DINESH BABU', staffType:'Field', designation:'Technician',            status:'Active'},
-        {staffID:'ST005', name:'KARTHIK S',   staffType:'Field', designation:'Technician',            status:'Active'}
-    ];
-
-    fundRequests = [
-        {requestID:'FR-2627-002', reqID:'FR-2627-002', requestedBy:'ST003', requestedByName:'MOHAN RAJ', amount:8000, purpose:'Advance for food & local travel - Ennore dredger job', status:'Disbursed', reqDate:d(-12), requestDate:d(-12), projectName:'Bluewave dredger AUX overhaul'},
-        {requestID:'FR-2627-003', reqID:'FR-2627-003', requestedBy:'ST004', requestedByName:'DINESH BABU', amount:3000, purpose:'Spares purchase advance - Sunrise DG job', status:'Pending', reqDate:d(-2), requestDate:d(-2)}
-    ];
-    fundPools = [
-        {poolID:'Fund Req-2627-001', status:'Closed', disbursedAmount:5000, requestedBy:'MOHAN RAJ', requestedByName:'MOHAN RAJ', disbursedOn:d(-30), purpose:'Adv food and local travel expenses', projectName:'Chennai camp project', closedOn:d(-2)},
-        {poolID:'Fund Req-2627-002', status:'Active', disbursedAmount:8000, requestedBy:'MOHAN RAJ', requestedByName:'MOHAN RAJ', disbursedOn:d(-10), purpose:'Ennore dredger job advance', projectName:'Bluewave dredger AUX overhaul'}
-    ];
-
-    projectExpenses = [
-        {projExpID:'PE001', projectName:'Bluewave dredger AUX overhaul', customerName:'Bluewave Dredging Pvt Ltd', status:'Active',
-         items:[
-            {itemID:'PEI001', expenseDate:d(-9), description:'Team lunch', amount:420, paidBy:'ST003', paidByName:'MOHAN RAJ', technicians:['MOHAN RAJ','DINESH BABU'], head:'Food Expenses', acctHead:'AC001 - Food Expenses', poolID:'Fund Req-2627-002', billStatus:'available', vendor:'Hotel Sangeetha', billAttachments:[]},
-            {itemID:'PEI002', expenseDate:d(-8), description:'Auto to Ennore port', amount:350, paidBy:'ST003', paidByName:'MOHAN RAJ', technicians:['MOHAN RAJ'], head:'Travel', acctHead:'AC002 - Local Travel', poolID:'Fund Req-2627-002', billStatus:'no_bill', billRemark:'Auto - no receipt', billAttachments:[]},
-            {itemID:'PEI003', expenseDate:d(-7), description:'Consumables - emery sheets, WD40', amount:980, paidBy:'ST004', paidByName:'DINESH BABU', technicians:['DINESH BABU'], head:'Consumables', acctHead:'AC003 - Consumables', poolID:'Fund Req-2627-002', billStatus:'pending', billRemark:'Original with accounts', billAttachments:[]}
-         ]}
-    ];
-
-    workLogs = [
-        {wlID:'WL001', projectName:'Bluewave dredger AUX overhaul', customerName:'Bluewave Dredging Pvt Ltd', location:'Ennore Port, Chennai',
-         technicians:[{name:'MOHAN RAJ',staffID:'ST003'},{name:'DINESH BABU',staffID:'ST004'}],
-         dailyEntries:[
-            {entryID:'DE001', date:d(-9), workDetails:'Opened AUX engine no.2 cylinder heads. Decarbonised piston crowns. Checked liner condition - within limits.',
-             technicians:[{name:'MOHAN RAJ',staffID:'ST003',startTime:'08:30',endTime:'17:30',remarks:''},{name:'DINESH BABU',staffID:'ST004',startTime:'08:30',endTime:'17:30',remarks:''}],
-             timeLogRemarks:'Full day on board - lunch provided by vessel', mergeTechRemarks:true, calibrations:[], photos:[]},
-            {entryID:'DE002', date:d(-8), workDetails:'Lapped exhaust valves, renewed head gaskets, boxed up cylinders 1-3. Crank web deflection readings taken.',
-             technicians:[{name:'MOHAN RAJ',staffID:'ST003',startTime:'09:00',endTime:'18:00',remarks:'Stayed late for deflection readings'},{name:'DINESH BABU',staffID:'ST004',startTime:'09:00',endTime:'16:00',remarks:'Left early - unwell'}],
-             timeLogRemarks:'', mergeTechRemarks:false, calibrations:[], photos:[]}
-         ]}
-    ];
-
-    currentUser = { staffID:'ST003', name:'MOHAN RAJ' };
-    _signedInEmail = 'demo.technician@example.com';
-    accessToken = 'DEMO-TOKEN';
-
-    window.saveData = async function(type){ console.log('[DEMO] save skipped:', type); };
-    window.handleSignIn = function(){ alert('This is a demo build - no sign-in needed. Data is fictitious and nothing is saved.'); };
-    window.handleSignOut = function(){ location.reload(); };
-    window._startConcurrencyPolling = function(){};
-    window._concurBlockIfStale = async function(){ return false; };
-    window.gapiLoaded = function(){}; window.gisLoaded = function(){};
-
-    try { renderApp(); } catch(e) { console.error('[DEMO] renderApp failed:', e); }
-
-    const rb = document.createElement('div');
-    rb.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99998;background:linear-gradient(90deg,#b45309,#d97706);color:#fff;text-align:center;font:600 11px/1.6 sans-serif;padding:4px';
-    rb.textContent = 'DEMO - Demo Engineering Service company - fictitious data - changes are not saved';
-    document.body.appendChild(rb);
-    document.title = 'DEMO - Field App';
-})();
-</script>
+<script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async></script>
+<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async></script>
 </body>
 </html>
